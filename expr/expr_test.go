@@ -43,3 +43,26 @@ func TestDivByZeroClassified(t *testing.T) {
 		t.Fatalf("batch: want ErrDivByZero, got %v", br.Errs[0])
 	}
 }
+
+func TestStepBudgetBoundsDeepInput(t *testing.T) {
+	// Build a deeply nested expression: not(not(...(true)...))
+	deep := &Expr{Op: OpLit, Lit: Bool(true)}
+	for i := 0; i < 50000; i++ {
+		deep = &Expr{Op: OpNot, Left: deep}
+	}
+	rec := Record{}
+	_, err := Eval(deep, rec, EvalOptions{MaxSteps: 1000})
+	if err == nil || err.Class != ErrBudget {
+		t.Fatalf("want ErrBudget, got %v", err)
+	}
+	// Batch path is likewise bounded.
+	br := EvalBatch(deep, []Record{rec}, BatchOptions{MaxSteps: 100})
+	if br.Errs[0] == nil || br.Errs[0].Class != ErrBudget {
+		t.Fatalf("batch: want ErrBudget, got %v", br.Errs[0])
+	}
+	// Generous budget completes fine.
+	v, err := Eval(deep, rec, EvalOptions{MaxSteps: 200000})
+	if err != nil || v.Kind != KindBool {
+		t.Fatalf("unexpected: %v %v", v, err)
+	}
+}
